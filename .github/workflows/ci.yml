@@ -66,12 +66,14 @@ jobs:
 
       - name: Prepare CI-only inputs
         run: |
-          # Empty config: no real endpoints or credentials are loaded.
+          # Empty config: no real endpoints or credentials are loaded (the
+          # agent's tests need none).
           : > config/ci.toml
 
       - name: gofmt (file names only)
         run: |
-          files=$(gofmt -l $(git ls-files '*.go'))
+          # AI-tooling scripts under .claude/.codex are not part of the build.
+          files=$(gofmt -l $(git ls-files '*.go' ':!:.claude/**' ':!:.codex/**'))
           if [ -n "$files" ]; then
             echo "::error::gofmt would change these files:"
             echo "$files"
@@ -94,15 +96,4 @@ jobs:
         if: ${{ !cancelled() && inputs.run_tests }}
         run: |
           set -o pipefail
-          module=$(go list -m)
-          pkgs=()
-          for p in $(go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...); do
-            # Packages whose init connects to MySQL/Redis cannot run here.
-            if go list -test -deps "$p" | grep -qx "$module/storage"; then
-              echo "skip (needs live databases): $p"
-            else
-              pkgs+=("$p")
-            fi
-          done
-          if [ ${#pkgs[@]} -eq 0 ]; then echo "no runnable test packages"; exit 0; fi
-          go test -count=1 "${pkgs[@]}" 2>&1 | cap
+          go test -count=1 ./... 2>&1 | cap
